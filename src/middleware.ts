@@ -4,10 +4,15 @@ const isPublicRoute = createRouteMatcher([
     "/sign-in(.*)",
     "/sign-up(.*)",
 ]);
+clerkMiddleware({
+    authorizedParties:["https://multicryptoportfolio.vercel.app"],
+})
 
 export default clerkMiddleware(async (auth, request) => {
     if (!isPublicRoute(request)) {
+        
         await auth.protect();
+        
     }
 });
 
