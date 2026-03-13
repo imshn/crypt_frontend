@@ -75,7 +75,7 @@ export function AddTradeModal({ isOpen, onClose, portfolioId, initialCoinId, ini
     const feeUnits = feeType === "PERCENTAGE"
         ? parseFloat(quantity || "0") * (parseFloat(fee || "0") / 100)
         : 0;
-    const totalCost = tradeValue + feeAmount;
+    const totalCost = feeType === "PERCENTAGE" ? tradeValue : (tradeValue + feeAmount);
 
     // Debounced search
     const searchCoins = useCallback(async (query: string) => {
@@ -364,7 +364,7 @@ export function AddTradeModal({ isOpen, onClose, portfolioId, initialCoinId, ini
                         />
                         {feeType === "PERCENTAGE" && fee && tradeValue > 0 && (
                             <p className="text-xs text-muted-foreground">
-                                = {feeUnits.toLocaleString(undefined, { maximumFractionDigits: 6 })} {symbol || "units"} fee (~{formatLocal(feeAmount)})
+                                = {feeUnits.toLocaleString(undefined, { maximumFractionDigits: 6 })} {symbol || "units"} fee (~{formatLocal(feeAmount)}) deducted from received units
                             </p>
                         )}
                     </div>
@@ -377,7 +377,7 @@ export function AddTradeModal({ isOpen, onClose, portfolioId, initialCoinId, ini
                     </div>
 
                     <div className="flex justify-between items-center p-3 bg-muted rounded-lg text-sm">
-                        <span className="text-muted-foreground">Total Value</span>
+                        <span className="text-muted-foreground">Cash Required</span>
                         <span className="font-semibold">
                             {formatLocal(totalCost)}
                         </span>
