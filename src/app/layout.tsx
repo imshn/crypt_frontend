@@ -19,8 +19,8 @@ export default function RootLayout({
 }>) {
     return (
         <ClerkProvider>
-            <html lang="en">
-                <body className={inter.className}>
+            <html lang="en" suppressHydrationWarning>
+                <body className={`${inter.className} min-h-screen bg-background text-foreground`}>
                     <Providers>
                         {children}
                         <Toaster />

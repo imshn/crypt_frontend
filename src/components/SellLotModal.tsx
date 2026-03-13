@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { useCurrency } from "@/lib/currency";
 
 interface SellLotModalProps {
     isOpen: boolean;
@@ -33,11 +34,15 @@ export function SellLotModal({ isOpen, onClose, portfolioId, coinId, symbol, lot
 
     const queryClient = useQueryClient();
     const api = useApi();
+    const { currency, convertToUsd, formatFromUsd, formatLocal } = useCurrency();
 
     const tradeValue = parseFloat(price || "0") * parseFloat(quantity || "0");
     const feeAmount = feeType === "PERCENTAGE"
         ? tradeValue * (parseFloat(fee || "0") / 100)
         : parseFloat(fee || "0");
+    const feeUnits = feeType === "PERCENTAGE"
+        ? parseFloat(quantity || "0") * (parseFloat(fee || "0") / 100)
+        : 0;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -51,10 +56,10 @@ export function SellLotModal({ isOpen, onClose, portfolioId, coinId, symbol, lot
                     coin_id: coinId,
                     symbol: symbol.toUpperCase(),
                     type: "SELL",
-                    price: parseFloat(price),
+                    price: convertToUsd(parseFloat(price)),
                     quantity: parseFloat(quantity),
                     target_lot_id: lot.id,
-                    fee: parseFloat(fee || "0"),
+                    fee: feeType === "FIXED" ? convertToUsd(parseFloat(fee || "0")) : parseFloat(fee || "0"),
                     fee_type: feeType,
                 }
             });
@@ -65,7 +70,7 @@ export function SellLotModal({ isOpen, onClose, portfolioId, coinId, symbol, lot
             queryClient.invalidateQueries({ queryKey: ['lots', portfolioId, coinId] });
 
             toast.success(`Lot Sale Executed`, {
-                description: `Sold ${quantity} from lot purchased at $${lot.purchase_price.toLocaleString()}`
+                description: `Sold ${quantity} from lot purchased at ${formatFromUsd(lot.purchase_price, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`
             });
 
             setPrice("");
@@ -99,12 +104,12 @@ export function SellLotModal({ isOpen, onClose, portfolioId, coinId, symbol, lot
                         </div>
                         <div className="flex justify-between">
                             <span className="text-muted-foreground">Purchase Price</span>
-                            <span className="font-medium">${lot?.purchase_price.toLocaleString()}</span>
+                            <span className="font-medium">{formatFromUsd(lot?.purchase_price || 0, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span>
                         </div>
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="sell-price">Sell Price ($)</Label>
+                        <Label htmlFor="sell-price">Sell Price ({currency})</Label>
                         <Input
                             id="sell-price"
                             type="number"
@@ -143,7 +148,7 @@ export function SellLotModal({ isOpen, onClose, portfolioId, coinId, symbol, lot
                         <Label>Trading Fee</Label>
                         <Tabs value={feeType} onValueChange={(v: any) => setFeeType(v as "FIXED" | "PERCENTAGE")} className="w-full">
                             <TabsList className="grid w-full grid-cols-2 h-9">
-                                <TabsTrigger value="FIXED" className="text-xs">$ Fixed</TabsTrigger>
+                                <TabsTrigger value="FIXED" className="text-xs">{currency} Fixed</TabsTrigger>
                                 <TabsTrigger value="PERCENTAGE" className="text-xs">% Percentage</TabsTrigger>
                             </TabsList>
                         </Tabs>
@@ -157,7 +162,7 @@ export function SellLotModal({ isOpen, onClose, portfolioId, coinId, symbol, lot
                         />
                         {feeType === "PERCENTAGE" && fee && tradeValue > 0 && (
                             <p className="text-xs text-muted-foreground">
-                                = ${feeAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} fee on ${tradeValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sale
+                                = {feeUnits.toLocaleString(undefined, { maximumFractionDigits: 6 })} {symbol} fee (~{formatLocal(feeAmount)})
                             </p>
                         )}
                     </div>
@@ -165,7 +170,7 @@ export function SellLotModal({ isOpen, onClose, portfolioId, coinId, symbol, lot
                     <div className="flex justify-between items-center p-3 bg-muted rounded-lg text-sm">
                         <span className="text-muted-foreground">Net Proceeds</span>
                         <span className="font-semibold text-green-500">
-                            ${(tradeValue - feeAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {formatLocal(tradeValue - feeAmount)}
                         </span>
                     </div>
 

@@ -1,9 +1,15 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApi } from "@/lib/api";
-import { useQueryClient } from "@tanstack/react-query";
-import { X, Loader2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrency } from "@/lib/currency";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 
 
@@ -19,11 +25,42 @@ export function WalletModal({ isOpen, onClose, portfolioId }: WalletModalProps) 
     const [action, setAction] = useState<"DEPOSIT" | "WITHDRAW">("DEPOSIT");
     const queryClient = useQueryClient();
     const api = useApi();
+    const { currency, convertFromUsd, convertToUsd, formatFromUsd, formatLocal } = useCurrency();
 
-    if (!isOpen) return null;
+    const { data: summary } = useQuery({
+        queryKey: ['summary', portfolioId],
+        queryFn: async () => {
+            const res = await api.get(`/portfolio/${portfolioId}/summary`);
+            return res.data;
+        },
+        enabled: isOpen,
+    });
+
+    const availableCash = summary?.cash_balance ?? 0;
+    const availableCashLocal = convertFromUsd(availableCash);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        setAction("DEPOSIT");
+        setAmount("");
+    }, [isOpen]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        const amountNum = parseFloat(amount);
+        if (!Number.isFinite(amountNum) || amountNum <= 0) {
+            toast.error("Invalid amount", { description: "Enter an amount greater than 0." });
+            return;
+        }
+
+        if (action === "WITHDRAW" && amountNum - availableCashLocal > 1e-8) {
+            toast.error("Insufficient cash", {
+                description: `Available: ${formatLocal(availableCashLocal)}`
+            });
+            return;
+        }
+
         setLoading(true);
 
         try {
@@ -31,77 +68,81 @@ export function WalletModal({ isOpen, onClose, portfolioId }: WalletModalProps) 
                 params: {
                     portfolio_id: portfolioId,
                     type: action,
-                    amount: parseFloat(amount),
+                    amount: convertToUsd(amountNum),
                 }
             });
 
             queryClient.invalidateQueries({ queryKey: ['summary', portfolioId] });
 
             toast.success(`${action === 'DEPOSIT' ? 'Deposit' : 'Withdrawal'} Successful`, {
-                description: `$${parseFloat(amount).toLocaleString()} has been ${action === 'DEPOSIT' ? 'deposited' : 'withdrawn'}.`
+                description: `${formatLocal(amountNum)} has been ${action === 'DEPOSIT' ? 'deposited' : 'withdrawn'}.`
             });
 
             setAmount("");
             onClose();
         } catch (error: any) {
             console.error("Wallet transaction failed", error);
+            const detail = error?.response?.data?.detail;
             toast.error("Transaction Failed", {
-                description: "Please check your inputs and try again."
+                description: detail || "Please check your inputs and try again."
             });
         } finally {
             setLoading(false);
         }
     };
 
+    const enteredAmount = parseFloat(amount || "0");
+    const isWithdrawInsufficient = action === "WITHDRAW" && enteredAmount - availableCashLocal > 1e-8;
+
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
-            <div className="bg-gray-900 rounded-xl border border-gray-800 w-full max-w-sm p-6">
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-bold">Manage Cash</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white">
-                        <X size={20} />
-                    </button>
-                </div>
+        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+            <DialogContent className="sm:max-w-[420px]">
+                <DialogHeader>
+                    <DialogTitle>Manage Cash</DialogTitle>
+                </DialogHeader>
 
-                <div className="flex gap-2 mb-6">
-                    <button
-                        onClick={() => setAction("DEPOSIT")}
-                        className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${action === 'DEPOSIT' ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'border-gray-700 text-gray-400 hover:border-gray-600'}`}
-                    >
-                        Deposit
-                    </button>
-                    <button
-                        onClick={() => setAction("WITHDRAW")}
-                        className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${action === 'WITHDRAW' ? 'bg-red-600/20 border-red-500 text-red-400' : 'border-gray-700 text-gray-400 hover:border-gray-600'}`}
-                    >
-                        Withdraw
-                    </button>
-                </div>
+                <Tabs value={action} onValueChange={(value) => setAction(value as "DEPOSIT" | "WITHDRAW")}>
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="DEPOSIT">Deposit</TabsTrigger>
+                        <TabsTrigger value="WITHDRAW">Withdraw</TabsTrigger>
+                    </TabsList>
+                </Tabs>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-xs text-gray-400 mb-1">Amount ($)</label>
-                        <input
+                <form onSubmit={handleSubmit} className="grid gap-4 py-2">
+                    <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+                        Available: {formatFromUsd(availableCash)}
+                    </div>
+
+                    <div className="grid gap-2">
+                        <Label htmlFor="wallet-amount">Amount ({currency})</Label>
+                        <Input
+                            id="wallet-amount"
                             type="number"
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
-                            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
                             placeholder="1000.00"
                             step="any"
                             required
                         />
                     </div>
 
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full bg-white text-black hover:bg-gray-200 font-bold py-2 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                        {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                        {loading ? "Processing..." : `Confirm ${action === 'DEPOSIT' ? 'Deposit' : 'Withdrawal'}`}
-                    </button>
+                    {isWithdrawInsufficient && (
+                        <p className="text-xs text-destructive">Insufficient cash for this withdrawal.</p>
+                    )}
+
+                    <DialogFooter>
+                        <Button
+                            type="submit"
+                            className="w-full"
+                            variant={action === "WITHDRAW" ? "destructive" : "default"}
+                            disabled={loading || isWithdrawInsufficient}
+                        >
+                            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {loading ? "Processing..." : `Confirm ${action === "DEPOSIT" ? "Deposit" : "Withdrawal"}`}
+                        </Button>
+                    </DialogFooter>
                 </form>
-            </div>
-        </div>
+            </DialogContent>
+        </Dialog>
     );
 }
